@@ -607,6 +607,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         )
     }
     
+    // MARK: - NSWindowDelegate: Native full screen
+
+    /// Let macOS auto-hide the toolbar together with the menu bar in native
+    /// full screen, so the video gets the whole screen. Moving the pointer to
+    /// the top edge reveals both again, as in any other full-screen app.
+    func window(_ window: NSWindow,
+                willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions = []) -> NSApplication.PresentationOptions {
+        return proposedOptions.union([.autoHideToolbar])
+    }
+
+    /// Drop the aspect lock before the transition so macOS sizes the window
+    /// to the whole screen; refreshNativeAspectRatioLock restores it on exit.
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        window.contentAspectRatio = .zero
+    }
+
+    /// The content area changes size when the toolbar collapses; refresh the
+    /// cached geometry so mouse mapping stays aligned with the video.
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.updateWindowAppStatus(for: window)
+            NotificationCenter.default.post(name: .toolbarVisibilityChanged, object: nil)
+        }
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        refreshNativeAspectRatioLock(for: window)
+        DispatchQueue.main.async { [weak self] in
+            self?.updateWindowAppStatus(for: window)
+            NotificationCenter.default.post(name: .toolbarVisibilityChanged, object: nil)
+        }
+    }
+
     // MARK: - NSWindowDelegate: Window Focus Management
     /// Called when the window gains focus
     func windowDidBecomeKey(_ notification: Notification) {
@@ -908,7 +944,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     /// Apply/remove native macOS content aspect ratio lock.
     private func refreshNativeAspectRatioLock(for window: NSWindow, constrainedFrameSize: NSSize? = nil) {
-        guard UserSettings.shared.isAspectRatioLocked else {
+        // In native full screen the lock would keep the window letterboxed
+        // inside the Space (bars on all sides); let the video fill the screen
+        // and rely on the gravity setting (Fit/Fill/Stretch) instead.
+        guard UserSettings.shared.isAspectRatioLocked, !window.styleMask.contains(.fullScreen) else {
             window.contentAspectRatio = .zero
             logResizeEvent("refreshAspect unlocked", window: window)
             return
