@@ -1119,8 +1119,10 @@ class VideoManager: NSObject, ObservableObject, VideoManagerProtocol {
             }
 
             // First-time fallback when no previous aspect ratio exists.
+            // Keep the user's gravity choice: overriding it here silently
+            // reverted "Fill" to "Fit" on every launch for feeds whose
+            // active area matches no preset (e.g. a pillarboxed 3:2 mirror).
             UserSettings.shared.customAspectRatioValue = activeAspectRatio
-            UserSettings.shared.gravity = .resizeAspect
             isAspectRatioInitialized = true
             logger.log(content: "No preset match found. Storing initial custom aspect ratio value: \(String(format: "%.3f", activeAspectRatio))")
 
